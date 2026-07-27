@@ -8,7 +8,7 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Vector as V
 import Data.Text (pack)
 
-import QueryLang.Types (Step (..), Query (..), Op (..), Condition (..))
+import QueryLang.Types (Step (..), Query (..), Op (..), Condition (..), SortDir (..))
 import QueryLang.Parser (parseQuery)
 import QueryLang.Evaluator (evaluate)
 import Formatter (formatValue)
@@ -116,6 +116,22 @@ spec = do
     it "parses filter with null value" $ do
       parseQuery "[?value == null]"
         `shouldBe` Right (Query [FilterBy (Condition (pack "value") Eq Null)])
+
+    it "parses sort ascending" $ do
+      parseQuery "sort(price)"
+        `shouldBe` Right (Query [SortBy (pack "price") Asc])
+
+    it "parses sort descending" $ do
+      parseQuery "sort(price desc)"
+        `shouldBe` Right (Query [SortBy (pack "price") Desc])
+
+    it "parses sort with pipe" $ do
+      parseQuery "| sort(price)"
+        `shouldBe` Right (Query [SortBy (pack "price") Asc])
+
+    it "parses sort after navigation" $ do
+      parseQuery ".items sort(price)"
+        `shouldBe` Right (Query [FieldAccess (pack "items"), SortBy (pack "price") Asc])
 
   describe "Evaluator" $ do
     it "evaluates a field access" $ do
@@ -227,6 +243,48 @@ spec = do
     it "errors filtering a non-array" $ do
       evaluate (Query [FilterBy (Condition (pack "x") Eq (mkNum 1))]) sample
         `shouldBe` Left "Cannot filter non-array"
+
+    let sortArr = Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "name", mkStr "charlie"), (mkKey "age", mkNum 30)]
+          , Object $ KM.fromList [(mkKey "name", mkStr "alice"),   (mkKey "age", mkNum 25)]
+          , Object $ KM.fromList [(mkKey "name", mkStr "bob"),     (mkKey "age", mkNum 35)]
+          ]
+
+    it "sorts ascending by field" $ do
+      evaluate (Query [SortBy (pack "age") Asc]) sortArr
+        `shouldBe` Right (Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "name", mkStr "alice"),   (mkKey "age", mkNum 25)]
+          , Object $ KM.fromList [(mkKey "name", mkStr "charlie"), (mkKey "age", mkNum 30)]
+          , Object $ KM.fromList [(mkKey "name", mkStr "bob"),     (mkKey "age", mkNum 35)]
+          ])
+
+    it "sorts descending by field" $ do
+      evaluate (Query [SortBy (pack "age") Desc]) sortArr
+        `shouldBe` Right (Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "name", mkStr "bob"),     (mkKey "age", mkNum 35)]
+          , Object $ KM.fromList [(mkKey "name", mkStr "charlie"), (mkKey "age", mkNum 30)]
+          , Object $ KM.fromList [(mkKey "name", mkStr "alice"),   (mkKey "age", mkNum 25)]
+          ])
+
+    it "sorts strings lexicographically" $ do
+      evaluate (Query [SortBy (pack "name") Asc]) sortArr
+        `shouldBe` Right (Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "name", mkStr "alice"),   (mkKey "age", mkNum 25)]
+          , Object $ KM.fromList [(mkKey "name", mkStr "bob"),     (mkKey "age", mkNum 35)]
+          , Object $ KM.fromList [(mkKey "name", mkStr "charlie"), (mkKey "age", mkNum 30)]
+          ])
+
+    it "errors sorting a non-array" $ do
+      evaluate (Query [SortBy (pack "x") Asc]) (mkStr "hello")
+        `shouldBe` Left "Cannot sort non-array"
+
+    it "errors sorting values of different types" $ do
+      let mixed = Array $ V.fromList
+            [ Object $ KM.fromList [(mkKey "val", mkNum 1)]
+            , Object $ KM.fromList [(mkKey "val", mkStr "two")]
+            ]
+      evaluate (Query [SortBy (pack "val") Asc]) mixed
+        `shouldBe` Left "Cannot sort values of different types"
 
   describe "Formatter" $ do
     it "formats a string value" $ do

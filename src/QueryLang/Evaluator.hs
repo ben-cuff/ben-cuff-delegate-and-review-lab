@@ -2,11 +2,15 @@ module QueryLang.Evaluator
   ( evaluate
   ) where
 
+import Control.Monad (unless)
 import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Vector as V
-import QueryLang.Types (Step (..), Query (..), Op (..), Condition (..))
+import Data.List (sortBy)
+import Data.Maybe (fromMaybe)
+import Data.Text (Text)
+import QueryLang.Types (Step (..), Query (..), Op (..), Condition (..), SortDir (..))
 
 evaluate :: Query -> Value -> Either String Value
 evaluate (Query []) v = Right v
@@ -41,6 +45,12 @@ evaluate (Query (step : rest)) v = case step of
       let filtered = V.filter (checkCondition cond) arr
       evaluate (Query rest) (Array filtered)
     _ -> Left "Cannot filter non-array"
+  SortBy field dir -> case v of
+    Array arr -> do
+      let extracted = V.map (extractField field) arr
+      sorted <- sortArray dir extracted arr
+      evaluate (Query rest) (Array sorted)
+    _ -> Left "Cannot sort non-array"
 
 checkCondition :: Condition -> Value -> Bool
 checkCondition (Condition field op val) element = case element of
@@ -67,3 +77,29 @@ applyOp Eq  EQ = True
 applyOp Neq EQ = False
 applyOp Neq _  = True
 applyOp _   _  = False
+
+extractField :: Text -> Value -> Value
+extractField field (Object obj) = fromMaybe Null (KM.lookup (Key.fromText field) obj)
+extractField _ _ = Null
+
+sortArray :: SortDir -> V.Vector Value -> V.Vector Value -> Either String (V.Vector Value)
+sortArray dir keys vals = do
+  let nonNull = V.filter (/= Null) keys
+  unless (V.null nonNull) $ do
+    let t = valueTag (V.head nonNull)
+        allSame = V.all (\v -> valueTag v == t) nonNull
+    unless allSame (Left "Cannot sort values of different types")
+  let pairs = V.toList (V.zip keys vals)
+      cmp (k1, _) (k2, _) = compareValues k1 k2
+      sorted = case dir of
+        Asc  -> sortBy cmp pairs
+        Desc -> sortBy (flip cmp) pairs
+  Right (V.fromList (map snd sorted))
+
+valueTag :: Value -> Int
+valueTag (Object _) = 0
+valueTag (Array _)  = 1
+valueTag (String _) = 2
+valueTag (Number _) = 3
+valueTag (Bool _)   = 4
+valueTag Null       = 5

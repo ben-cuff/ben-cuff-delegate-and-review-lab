@@ -3,6 +3,7 @@ module QueryLang.Types
   , Query (..)
   , Op (..)
   , Condition (..)
+  , SortDir (..)
   ) where
 
 import Data.Aeson (Value)
@@ -17,12 +18,16 @@ data Condition = Condition
   , condValue :: Value
   } deriving (Show, Eq)
 
+data SortDir = Asc | Desc
+  deriving (Show, Eq)
+
 data Step
   = FieldAccess Text
   | IndexAccess Int
   | Count
   | MapProj [Text]
   | FilterBy Condition
+  | SortBy Text SortDir
   deriving (Show, Eq)
 
 newtype Query = Query { steps :: [Step] }

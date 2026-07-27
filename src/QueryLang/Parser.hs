@@ -7,7 +7,7 @@ import Data.Aeson (Value (..))
 import Data.Char (isAlphaNum, isDigit, isSpace)
 import Data.List (isPrefixOf, stripPrefix)
 import Data.Text (pack)
-import QueryLang.Types (Step (..), Query (..), Op (..), Condition (..))
+import QueryLang.Types (Step (..), Query (..), Op (..), Condition (..), SortDir (..))
 
 parseQuery :: String -> Either String Query
 parseQuery "" = Left "Empty query"
@@ -105,5 +105,27 @@ parseOperation :: String -> Either String (Step, String)
 parseOperation s
   | Just rest <- stripPrefix "count" s
   = Right (Count, dropWhile isSpace rest)
+  | Just afterSort <- stripPrefix "sort" s
+  = parseSort afterSort
   | otherwise
   = Left "Not a valid operation"
+
+parseSort :: String -> Either String (Step, String)
+parseSort s = do
+  let s' = dropWhile isSpace s
+  case s' of
+    '(':s'' -> do
+      let s''' = dropWhile isSpace s''
+          (field, afterField) = span (\c -> isAlphaNum c || c == '_' || c == '-') s'''
+      when (null field) (Left "Expected field name in sort")
+      let afterField' = dropWhile isSpace afterField
+      case afterField' of
+        ')':rest ->
+          Right (SortBy (pack field) Asc, dropWhile isSpace rest)
+        xs
+          | "asc)" `isPrefixOf` xs ->
+              Right (SortBy (pack field) Asc, dropWhile isSpace (drop 4 xs))
+          | "desc)" `isPrefixOf` xs ->
+              Right (SortBy (pack field) Desc, dropWhile isSpace (drop 5 xs))
+          | otherwise -> Left "Expected ')' or 'asc)' or 'desc)' after sort field"
+    _ -> Left "Expected '(' after 'sort'"
