@@ -1,0 +1,49 @@
+cabal-version: 3.0
+name:          json-query
+version:       0.1.0.0
+synopsis:      A small JSON query tool
+description:   A Haskell command-line application that loads a JSON file and executes simple queries.
+license:       MIT
+build-type:    Simple
+
+library
+  exposed-modules:
+    Formatter
+    QueryLang.Evaluator
+    QueryLang.Parser
+    QueryLang.Types
+  hs-source-dirs: src
+  default-language: Haskell2010
+  build-depends:
+    , aeson      >= 2.0
+    , base       >= 4.14
+    , bytestring
+    , text
+    , unordered-containers
+    , vector
+
+executable json-query
+  main-is: Main.hs
+  hs-source-dirs: app
+  default-language: Haskell2010
+  build-depends:
+    , aeson      >= 2.0
+    , base       >= 4.14
+    , bytestring
+    , json-query
+    , text
+
+test-suite json-query-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs: test
+  default-language: Haskell2010
+  build-depends:
+    , aeson      >= 2.0
+    , base       >= 4.14
+    , bytestring
+    , hspec      >= 2.10
+    , json-query
+    , text
+    , unordered-containers
+    , vector
