@@ -8,7 +8,7 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Vector as V
 import Data.Text (pack)
 
-import QueryLang.Types (Step (..), Query (..))
+import QueryLang.Types (Step (..), Query (..), Op (..), Condition (..))
 import QueryLang.Parser (parseQuery)
 import QueryLang.Evaluator (evaluate)
 import Formatter (formatValue)
@@ -93,6 +93,30 @@ spec = do
       parseQuery ".items{name, price}"
         `shouldBe` Right (Query [FieldAccess (pack "items"), MapProj [pack "name", pack "price"]])
 
+    it "parses filter with number comparison" $ do
+      parseQuery "[?price > 10]"
+        `shouldBe` Right (Query [FilterBy (Condition (pack "price") Gt (mkNum 10))])
+
+    it "parses filter with string comparison" $ do
+      parseQuery "[?name == \"Alice\"]"
+        `shouldBe` Right (Query [FilterBy (Condition (pack "name") Eq (mkStr "Alice"))])
+
+    it "parses filter after navigation" $ do
+      parseQuery ".items[?price >= 5]"
+        `shouldBe` Right (Query [FieldAccess (pack "items"), FilterBy (Condition (pack "price") Ge (mkNum 5))])
+
+    it "parses filter with != operator" $ do
+      parseQuery "[?status != \"done\"]"
+        `shouldBe` Right (Query [FilterBy (Condition (pack "status") Neq (mkStr "done"))])
+
+    it "parses filter with boolean value" $ do
+      parseQuery "[?active == true]"
+        `shouldBe` Right (Query [FilterBy (Condition (pack "active") Eq (Bool True))])
+
+    it "parses filter with null value" $ do
+      parseQuery "[?value == null]"
+        `shouldBe` Right (Query [FilterBy (Condition (pack "value") Eq Null)])
+
   describe "Evaluator" $ do
     it "evaluates a field access" $ do
       evaluate (Query [FieldAccess (pack "name")]) sample
@@ -155,6 +179,54 @@ spec = do
     it "errors on map projection of non-object" $ do
       evaluate (Query [MapProj [pack "x"]]) (mkStr "hello")
         `shouldBe` Left "Cannot project fields on non-object/non-array"
+
+    let itemsArr = Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "id", mkNum 1), (mkKey "price", mkNum 10)]
+          , Object $ KM.fromList [(mkKey "id", mkNum 2), (mkKey "price", mkNum 20)]
+          , Object $ KM.fromList [(mkKey "id", mkNum 3), (mkKey "price", mkNum 5)]
+          ]
+
+    it "filters array elements by condition" $ do
+      evaluate (Query [FilterBy (Condition (pack "price") Gt (mkNum 9))]) itemsArr
+        `shouldBe` Right (Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "id", mkNum 1), (mkKey "price", mkNum 10)]
+          , Object $ KM.fromList [(mkKey "id", mkNum 2), (mkKey "price", mkNum 20)]
+          ])
+
+    it "filters with >= operator" $ do
+      evaluate (Query [FilterBy (Condition (pack "price") Ge (mkNum 10))]) itemsArr
+        `shouldBe` Right (Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "id", mkNum 1), (mkKey "price", mkNum 10)]
+          , Object $ KM.fromList [(mkKey "id", mkNum 2), (mkKey "price", mkNum 20)]
+          ])
+
+    it "filters with <= operator" $ do
+      evaluate (Query [FilterBy (Condition (pack "price") Le (mkNum 10))]) itemsArr
+        `shouldBe` Right (Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "id", mkNum 1), (mkKey "price", mkNum 10)]
+          , Object $ KM.fromList [(mkKey "id", mkNum 3), (mkKey "price", mkNum 5)]
+          ])
+
+    it "filters with == operator" $ do
+      evaluate (Query [FilterBy (Condition (pack "id") Eq (mkNum 2))]) itemsArr
+        `shouldBe` Right (Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "id", mkNum 2), (mkKey "price", mkNum 20)]
+          ])
+
+    it "filters with != operator" $ do
+      evaluate (Query [FilterBy (Condition (pack "id") Neq (mkNum 2))]) itemsArr
+        `shouldBe` Right (Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "id", mkNum 1), (mkKey "price", mkNum 10)]
+          , Object $ KM.fromList [(mkKey "id", mkNum 3), (mkKey "price", mkNum 5)]
+          ])
+
+    it "filters with missing field returns empty" $ do
+      evaluate (Query [FilterBy (Condition (pack "missing") Gt (mkNum 0))]) itemsArr
+        `shouldBe` Right (Array V.empty)
+
+    it "errors filtering a non-array" $ do
+      evaluate (Query [FilterBy (Condition (pack "x") Eq (mkNum 1))]) sample
+        `shouldBe` Left "Cannot filter non-array"
 
   describe "Formatter" $ do
     it "formats a string value" $ do
