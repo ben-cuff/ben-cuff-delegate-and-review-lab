@@ -24,3 +24,15 @@ evaluate (Query (step : rest)) v = case step of
   Count -> case v of
     Array arr -> evaluate (Query rest) (Number (fromIntegral (V.length arr)))
     _         -> evaluate (Query rest) (Number 1)
+  MapProj fields -> case v of
+    Object obj ->
+      let selected = KM.filterWithKey (\k _ -> Key.toText k `elem` fields) obj
+      in evaluate (Query rest) (Object selected)
+    Array arr -> do
+      mapped <- traverse projectObj (V.toList arr)
+      evaluate (Query rest) (Array (V.fromList mapped))
+    _ -> Left "Cannot project fields on non-object/non-array"
+    where
+      projectObj (Object obj) = Right $ Object $
+        KM.filterWithKey (\k _ -> Key.toText k `elem` fields) obj
+      projectObj _ = Left "Cannot project fields on non-object element"

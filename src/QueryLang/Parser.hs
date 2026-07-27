@@ -21,6 +21,9 @@ parseSteps ('.':s) = do
 parseSteps ('[':s) = do
   (step, rest) <- bracket s
   (step :) <$> parseSteps rest
+parseSteps ('{':s) = do
+  (step, rest) <- parseMapProj s
+  (step :) <$> parseSteps rest
 parseSteps ('|':s) = parseSteps (dropWhile isSpace s)
 parseSteps s = case parseOperation s of
   Right (step, rest) -> (step :) <$> parseSteps rest
@@ -42,6 +45,14 @@ bracket ('"':s) = do
 bracket s = case span isDigit s of
   (digits, ']':cs) | not (null digits) -> Right (IndexAccess (read digits), cs)
   (_,     _)                           -> Left "Expected integer index followed by ']'"
+
+parseMapProj :: String -> Either String (Step, String)
+parseMapProj s = do
+  let s' = dropWhile isSpace s
+      (content, rest) = break (== '}') s'
+  case rest of
+    '}':after -> Right (MapProj (map pack (words (map (\c -> if c == ',' then ' ' else c) content))), after)
+    _         -> Left "Unterminated map projection, expected '}'"
 
 parseOperation :: String -> Either String (Step, String)
 parseOperation s

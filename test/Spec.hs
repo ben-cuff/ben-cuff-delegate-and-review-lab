@@ -81,6 +81,18 @@ spec = do
       parseQuery ".items | count"
         `shouldBe` Right (Query [FieldAccess (pack "items"), Count])
 
+    it "parses map projection" $ do
+      parseQuery "{name, price}"
+        `shouldBe` Right (Query [MapProj [pack "name", pack "price"]])
+
+    it "parses map projection with trailing comma" $ do
+      parseQuery "{name,}"
+        `shouldBe` Right (Query [MapProj [pack "name"]])
+
+    it "parses map projection after navigation" $ do
+      parseQuery ".items{name, price}"
+        `shouldBe` Right (Query [FieldAccess (pack "items"), MapProj [pack "name", pack "price"]])
+
   describe "Evaluator" $ do
     it "evaluates a field access" $ do
       evaluate (Query [FieldAccess (pack "name")]) sample
@@ -119,6 +131,30 @@ spec = do
     it "counts a string value as 1" $ do
       evaluate (Query [FieldAccess (pack "name"), Count]) sample
         `shouldBe` Right (mkNum 1)
+
+    it "projects selected fields from an object" $ do
+      evaluate (Query [MapProj [pack "name"]]) sample
+        `shouldBe` Right (Object $ KM.fromList
+          [(mkKey "name", mkStr "Alice")])
+
+    it "projects fields over an array of objects" $ do
+      let arr = Array $ V.fromList
+            [ Object $ KM.fromList [(mkKey "a", mkNum 1), (mkKey "b", mkNum 2)]
+            , Object $ KM.fromList [(mkKey "a", mkNum 3), (mkKey "b", mkNum 4)]
+            ]
+      evaluate (Query [MapProj [pack "a"]]) arr
+        `shouldBe` Right (Array $ V.fromList
+          [ Object $ KM.fromList [(mkKey "a", mkNum 1)]
+          , Object $ KM.fromList [(mkKey "a", mkNum 3)]
+          ])
+
+    it "omits missing projected fields silently" $ do
+      evaluate (Query [MapProj [pack "missing"]]) sample
+        `shouldBe` Right (Object KM.empty)
+
+    it "errors on map projection of non-object" $ do
+      evaluate (Query [MapProj [pack "x"]]) (mkStr "hello")
+        `shouldBe` Left "Cannot project fields on non-object/non-array"
 
   describe "Formatter" $ do
     it "formats a string value" $ do

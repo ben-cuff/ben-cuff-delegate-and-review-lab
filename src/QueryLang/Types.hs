@@ -9,6 +9,7 @@ data Step
   = FieldAccess Text
   | IndexAccess Int
   | Count
+  | MapProj [Text]
   deriving (Show, Eq)
 
 newtype Query = Query { steps :: [Step] }
