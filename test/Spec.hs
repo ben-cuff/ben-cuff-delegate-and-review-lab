@@ -65,6 +65,22 @@ spec = do
       parseQuery "[\"name\"]"
         `shouldBe` Right (Query [FieldAccess (pack "name")])
 
+    it "parses count" $ do
+      parseQuery "count"
+        `shouldBe` Right (Query [Count])
+
+    it "parses count with pipe" $ do
+      parseQuery "| count"
+        `shouldBe` Right (Query [Count])
+
+    it "parses count after navigation" $ do
+      parseQuery ".items count"
+        `shouldBe` Right (Query [FieldAccess (pack "items"), Count])
+
+    it "parses count after pipe" $ do
+      parseQuery ".items | count"
+        `shouldBe` Right (Query [FieldAccess (pack "items"), Count])
+
   describe "Evaluator" $ do
     it "evaluates a field access" $ do
       evaluate (Query [FieldAccess (pack "name")]) sample
@@ -91,6 +107,18 @@ spec = do
     it "returns error for field access on non-object" $ do
       evaluate (Query [FieldAccess (pack "name"), FieldAccess (pack "x")]) sample
         `shouldBe` Left "Cannot access field on non-object"
+
+    it "counts elements in an array" $ do
+      evaluate (Query [FieldAccess (pack "items"), Count]) sample
+        `shouldBe` Right (mkNum 2)
+
+    it "counts a single object as 1" $ do
+      evaluate (Query [FieldAccess (pack "nested"), Count]) sample
+        `shouldBe` Right (mkNum 1)
+
+    it "counts a string value as 1" $ do
+      evaluate (Query [FieldAccess (pack "name"), Count]) sample
+        `shouldBe` Right (mkNum 1)
 
   describe "Formatter" $ do
     it "formats a string value" $ do

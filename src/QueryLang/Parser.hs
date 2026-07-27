@@ -2,7 +2,8 @@ module QueryLang.Parser
   ( parseQuery
   ) where
 
-import Data.Char (isAlphaNum, isDigit)
+import Data.Char (isAlphaNum, isDigit, isSpace)
+import Data.List (stripPrefix)
 import Data.Text (pack)
 import QueryLang.Types (Step (..), Query (..))
 
@@ -12,13 +13,18 @@ parseQuery s  = fmap Query (parseSteps s)
 
 parseSteps :: String -> Either String [Step]
 parseSteps "" = Right []
+parseSteps s
+  | isSpace (head s) = parseSteps (dropWhile isSpace s)
 parseSteps ('.':s) = do
   (field, rest) <- fieldName s
   (FieldAccess (pack field) :) <$> parseSteps rest
 parseSteps ('[':s) = do
   (step, rest) <- bracket s
   (step :) <$> parseSteps rest
-parseSteps s = Left $ "Unexpected character: " <> [head s]
+parseSteps ('|':s) = parseSteps (dropWhile isSpace s)
+parseSteps s = case parseOperation s of
+  Right (step, rest) -> (step :) <$> parseSteps rest
+  Left _             -> Left $ "Unexpected character: " <> [head s]
 
 fieldName :: String -> Either String (String, String)
 fieldName "" = Left "Expected field name after '.'"
@@ -36,3 +42,10 @@ bracket ('"':s) = do
 bracket s = case span isDigit s of
   (digits, ']':cs) | not (null digits) -> Right (IndexAccess (read digits), cs)
   (_,     _)                           -> Left "Expected integer index followed by ']'"
+
+parseOperation :: String -> Either String (Step, String)
+parseOperation s
+  | Just rest <- stripPrefix "count" s
+  = Right (Count, dropWhile isSpace rest)
+  | otherwise
+  = Left "Not a valid operation"

@@ -21,3 +21,6 @@ evaluate (Query (step : rest)) v = case step of
       Just val -> evaluate (Query rest) val
       Nothing  -> Left $ "Index out of bounds: " <> show idx
     _ -> Left "Cannot index non-array"
+  Count -> case v of
+    Array arr -> evaluate (Query rest) (Number (fromIntegral (V.length arr)))
+    _         -> evaluate (Query rest) (Number 1)
