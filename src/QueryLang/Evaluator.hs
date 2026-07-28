@@ -55,16 +55,18 @@ evaluate (Query (step : rest)) v = case step of
 checkCondition :: Condition -> Value -> Bool
 checkCondition (Condition field op val) element = case element of
   Object obj -> case KM.lookup (Key.fromText field) obj of
-    Just fieldVal -> applyOp op (compareValues fieldVal val)
-    Nothing       -> False
+    Just fieldVal -> case compareValues fieldVal val of
+      Just ord -> applyOp op ord
+      Nothing  -> False
+    Nothing -> False
   _ -> False
 
-compareValues :: Value -> Value -> Ordering
-compareValues (Number a) (Number b) = compare a b
-compareValues (String a) (String b) = compare a b
-compareValues (Bool a)   (Bool b)   = compare a b
-compareValues Null       Null       = EQ
-compareValues _          _          = EQ
+compareValues :: Value -> Value -> Maybe Ordering
+compareValues (Number a) (Number b) = Just (compare a b)
+compareValues (String a) (String b) = Just (compare a b)
+compareValues (Bool a)   (Bool b)   = Just (compare a b)
+compareValues Null       Null       = Just EQ
+compareValues _          _          = Nothing
 
 applyOp :: Op -> Ordering -> Bool
 applyOp Gt  GT = True
@@ -90,7 +92,7 @@ sortArray dir keys vals = do
         allSame = V.all (\v -> valueTag v == t) nonNull
     unless allSame (Left "Cannot sort values of different types")
   let pairs = V.toList (V.zip keys vals)
-      cmp (k1, _) (k2, _) = compareValues k1 k2
+      cmp (k1, _) (k2, _) = fromMaybe EQ (compareValues k1 k2)
       sorted = case dir of
         Asc  -> sortBy cmp pairs
         Desc -> sortBy (flip cmp) pairs

@@ -35,9 +35,12 @@ parseSteps s = case parseOperation s of
   Right (step, rest) -> (step :) <$> parseSteps rest
   Left _             -> Left $ "Unexpected character: " <> [head s]
 
+isIdentChar :: Char -> Bool
+isIdentChar c = isAlphaNum c || c == '_' || c == '-'
+
 fieldName :: String -> Either String (String, String)
 fieldName "" = Left "Expected field name after '.'"
-fieldName s  = case span (\c -> isAlphaNum c || c == '_' || c == '-') s of
+fieldName s  = case span isIdentChar s of
   ("", _) -> Left "Expected field name"
   p       -> Right p
 
@@ -63,13 +66,14 @@ parseMapProj s = do
 parseFilter :: String -> Either String (Step, String)
 parseFilter s = do
   let s' = dropWhile isSpace s
-      (field, s1) = span (\c -> isAlphaNum c || c == '_' || c == '-') s'
+      (field, s1) = span isIdentChar s'
   when (null field) (Left "Expected field name in filter condition")
   let s2 = dropWhile isSpace s1
   (op, s3) <- parseOp s2
   let s4 = dropWhile isSpace s3
   (val, s5) <- parseValue s4
-  case s5 of
+  let s6 = dropWhile isSpace s5
+  case s6 of
     ']':rest -> Right (FilterBy (Condition (pack field) op val), rest)
     _        -> Left "Expected ']' after filter condition"
 
@@ -116,16 +120,18 @@ parseSort s = do
   case s' of
     '(':s'' -> do
       let s''' = dropWhile isSpace s''
-          (field, afterField) = span (\c -> isAlphaNum c || c == '_' || c == '-') s'''
+          (field, afterField) = span isIdentChar s'''
       when (null field) (Left "Expected field name in sort")
       let afterField' = dropWhile isSpace afterField
-      case afterField' of
-        ')':rest ->
-          Right (SortBy (pack field) Asc, dropWhile isSpace rest)
-        xs
-          | "asc)" `isPrefixOf` xs ->
-              Right (SortBy (pack field) Asc, dropWhile isSpace (drop 4 xs))
-          | "desc)" `isPrefixOf` xs ->
-              Right (SortBy (pack field) Desc, dropWhile isSpace (drop 5 xs))
-          | otherwise -> Left "Expected ')' or 'asc)' or 'desc)' after sort field"
+          (dirToken, afterDir) = break (== ')') afterField'
+          dir = dropWhile isSpace dirToken
+      case afterDir of
+        ')':cs -> do
+          let rest = dropWhile isSpace cs
+          case dir of
+            ""     -> Right (SortBy (pack field) Asc, rest)
+            "asc"  -> Right (SortBy (pack field) Asc, rest)
+            "desc" -> Right (SortBy (pack field) Desc, rest)
+            _      -> Left $ "Unknown sort direction: " <> dir
+        _ -> Left "Expected ')' after sort field"
     _ -> Left "Expected '(' after 'sort'"
